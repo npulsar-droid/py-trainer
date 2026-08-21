@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python Trainer — 書いて覚えるPython</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel2: #1e222e;
+    --border: #2a2f3e;
+    --text: #d7dae3;
+    --dim: #8a90a3;
+    --accent: #4d9fec;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --mono: "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    height: 100vh; display: flex; overflow: hidden;
+  }
+
+  /* ---- sidebar ---- */
+  #sidebar {
+    width: 260px; min-width: 260px; background: var(--panel);
+    border-right: 1px solid var(--border); overflow-y: auto; padding: 16px 0;
+  }
+  #sidebar h1 { font-size: 16px; padding: 0 16px 4px; color: var(--accent); }
+  #sidebar .sub { font-size: 11px; color: var(--dim); padding: 0 16px 12px; }
+  #progressbar { height: 6px; background: var(--panel2); border-radius: 3px; margin: 0 16px 16px; overflow: hidden; }
+  #progressbar > div { height: 100%; background: var(--green); width: 0%; transition: width .3s; }
+  .chapter { font-size: 12px; color: var(--dim); padding: 12px 16px 4px; font-weight: 600; }
+  .lesson {
+    padding: 7px 16px 7px 28px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px; border-left: 3px solid transparent;
+  }
+  .lesson:hover { background: var(--panel2); }
+  .lesson.active { background: var(--panel2); border-left-color: var(--accent); }
+  .lesson .mark { width: 16px; text-align: center; color: var(--dim); }
+  .lesson.done .mark { color: var(--green); }
+  .lesson.review .mark { color: var(--yellow); }
+
+  /* ---- main ---- */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #desc {
+    padding: 20px 24px; overflow-y: auto; max-height: 38%;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  #desc h2 { font-size: 18px; margin-bottom: 8px; }
+  #desc p { font-size: 14px; line-height: 1.7; margin-bottom: 8px; color: var(--text); }
+  #desc a { color: var(--accent); }
+  #desc code, #output code {
+    font-family: var(--mono); font-size: 12.5px; background: var(--panel2);
+    padding: 1px 5px; border-radius: 4px; color: var(--yellow);
+  }
+  #desc pre {
+    background: var(--panel2); padding: 10px 12px; border-radius: 6px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    margin: 8px 0; overflow-x: auto; color: var(--text);
+  }
+  .task { border-left: 3px solid var(--accent); padding-left: 10px; margin-top: 10px; }
+  .resbox {
+    margin-top: 12px; padding: 8px 12px; background: var(--panel2);
+    border-radius: 6px; font-size: 12.5px; color: var(--dim); line-height: 1.7;
+  }
+
+  #editorwrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #toolbar {
+    display: flex; gap: 8px; padding: 8px 24px; align-items: center;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #0b0d12; border: none; font-weight: 600; }
+  button.primary:hover { opacity: .9; }
+  #toolbar .spacer { flex: 1; }
+  #toolbar .kbd { font-size: 11px; color: var(--dim); }
+
+  #editor {
+    flex: 1; width: 100%; background: var(--bg); color: var(--text); border: none;
+    resize: none; outline: none; padding: 14px 24px;
+    font-family: var(--mono); font-size: 14px; line-height: 1.6; tab-size: 4;
+  }
+
+  #output {
+    height: 32%; min-height: 140px; overflow-y: auto; background: var(--panel);
+    border-top: 1px solid var(--border); padding: 12px 24px; font-size: 13px;
+  }
+  #output .test { font-family: var(--mono); font-size: 12.5px; padding: 3px 0; }
+  #output .pass { color: var(--green); }
+  #output .fail { color: var(--red); }
+  #output .err { color: var(--red); font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
+  #output .log { color: var(--dim); font-family: var(--mono); font-size: 12.5px; }
+  #output .celebrate { color: var(--green); font-weight: 600; margin-top: 8px; }
+  #output .review-note { color: var(--yellow); font-weight: 600; margin-top: 8px; }
+  #output .muted { color: var(--dim); }
+  .hintbox {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; margin-top: 10px; font-size: 13px; line-height: 1.7;
+  }
+  .hintbox pre { background: var(--bg); padding: 8px 10px; border-radius: 4px; font-family: var(--mono); font-size: 12.5px; margin-top: 6px; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <h1>Python Trainer</h1>
+  <div class="sub" id="subline">書いて覚えるPython</div>
+  <div id="progressbar"><div></div></div>
+  <div id="nav"></div>
+</nav>
+
+<div id="main">
+  <div id="desc"></div>
+  <div id="editorwrap">
+    <div id="toolbar">
+      <button class="primary" id="btn-run">▶ 実行して採点</button>
+      <button id="btn-hint">ヒント</button>
+      <button id="btn-solution">解答例</button>
+      <button id="btn-reset">リセット</button>
+      <span class="spacer"></span>
+      <span class="kbd">⌘+Enter / Ctrl+Enter で実行</span>
+    </div>
+    <textarea id="editor" spellcheck="false"></textarea>
+  </div>
+  <div id="output"><span class="muted">コードを書いて「実行して採点」を押してください。</span></div>
+</div>
+
+<script id="data">
+"use strict";
+const PAYLOAD = __PAYLOAD__;
+const CHAPTERS = PAYLOAD.chapters;
+for (const ch of CHAPTERS) for (const l of ch.lessons) l.ch = ch;
+const ALL = CHAPTERS.flatMap(ch => ch.lessons);
+</script>
+
+<script>
+"use strict";
+
+/* ============ 状態管理（進捗＋軽いSRS） ============
+   進捗はサーバー経由で py-trainer/state.json に保存される。 */
+const MODE = PAYLOAD.mode ?? "server";   // "server" = ローカルのCPython / "static" = ブラウザ内のPyodide
+const STORE_KEY = "py-trainer.state.v1";
+
+let state = MODE === "static"
+  ? (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) ?? {}; } catch { return {}; } })()
+  : (PAYLOAD.state ?? {});
+if (typeof state.__seq !== "number") state.__seq = 0;
+if (typeof state.lessons !== "object" || state.lessons === null) state.lessons = {};
+
+let saveTimer = null;
+function saveState(immediate = false) {
+  clearTimeout(saveTimer);
+  const send = () => {
+    if (MODE === "static") {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* file:// 等で失敗しても続行 */ }
+      return;
+    }
+    fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state),
+    }).catch(() => { /* サーバー停止中でも画面は動かし続ける */ });
+  };
+  if (immediate) send();
+  else saveTimer = setTimeout(send, 500);
+}
+
+const lessonState = l => state.lessons[l.id];
+
+// 一度でも間違えた問題は、クリア後も「3問クリアするごと」に復習として再出題する
+function dueReview(l) {
+  const st = lessonState(l);
+  return !!(st?.done && (st.lapses ?? 0) > 0 && (state.__seq ?? 0) - (st.clearedSeq ?? 0) >= 3);
+}
+let current = ALL.find(l => !(lessonState(l)?.done)) ?? ALL.find(dueReview) ?? ALL[0];
+
+/* ============ UI ============ */
+const $nav = document.getElementById("nav");
+const $desc = document.getElementById("desc");
+const $editor = document.getElementById("editor");
+const $output = document.getElementById("output");
+const $bar = document.querySelector("#progressbar > div");
+document.getElementById("subline").textContent = `書いて覚えるPython全${ALL.length}問`;
+
+function renderNav() {
+  $nav.textContent = "";
+  for (const ch of CHAPTERS) {
+    const h = document.createElement("div");
+    h.className = "chapter";
+    h.textContent = ch.title;
+    $nav.append(h);
+    for (const l of ch.lessons) {
+      const st = lessonState(l);
+      const due = dueReview(l);
+      const el = document.createElement("div");
+      el.className = "lesson" + (l === current ? " active" : "") + (st?.done ? (due ? " review" : " done") : "");
+      const mark = document.createElement("span");
+      mark.className = "mark";
+      mark.textContent = st?.done ? (due ? "🔁" : "✓") : "○";
+      const label = document.createElement("span");
+      label.textContent = l.title;
+      el.append(mark, label);
+      el.addEventListener("click", () => selectLesson(l));
+      $nav.append(el);
+    }
+  }
+  const doneCount = ALL.filter(l => lessonState(l)?.done).length;
+  $bar.style.width = `${Math.round(doneCount / ALL.length * 100)}%`;
+}
+
+function resBoxHTML(ch) {
+  const links = ch.resources.map(r =>
+    `<a href="${r.url}" target="_blank" rel="noopener">${r.label}</a>`).join(" ・ ");
+  return `<div class="resbox">📚 深めるなら: ${links}<br>${MODE === "static" ? "※採点はブラウザの中のPython（Pyodide）で実行しています。コードはどこにも送信されません。" : "※採点はこのMacのPython（ローカル）で実行しています。ファイルを作る問題も使い捨てフォルダの中なので安心です。"}</div>`;
+}
+
+function selectLesson(lesson) {
+  persistCode();
+  current = lesson;
+  $desc.innerHTML = lesson.desc + resBoxHTML(lesson.ch);
+  const saved = lessonState(lesson)?.code;
+  $editor.value = saved && saved.trim() ? saved : lesson.starter;
+  editorLoaded = true;
+  $output.innerHTML = `<span class="muted">コードを書いて「実行して採点」を押してください。</span>`;
+  renderNav();
+  $editor.focus();
+}
+
+let editorLoaded = false;
+function persistCode() {
+  if (!current || !editorLoaded) return;
+  state = { ...state, lessons: { ...state.lessons, [current.id]: { ...lessonState(current), code: $editor.value } } };
+  saveState();
+}
+
+/* ============ ブラウザ内Python（static モードのみ） ============
+   採点ロジックは runner.py をそのまま Pyodide に読ませて動かす。
+   ローカル版（py_trainer.py）と同じファイルを使うので、判定がズレない。
+
+   Web Worker に閉じ込めてあるのは、無限ループを書いてしまったときに
+   タブごと固まらないようにするため。5秒で worker を捨てて作り直す。 */
+const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v314.0.2/full/pyodide.mjs";
+const RUN_TIMEOUT_MS = 5000;
+let worker = null, workerReady = null, pyReady = false, jobId = 0;
+
+/* worker は module 形式で作る。この Pyodide は classic worker を受け付けず、
+   blob: の worker からは importScripts でクロスオリジン読み込みもできないため、
+   ESM 版を動的 import する（wasm の在り処もそこから解決される）。 */
+function workerSource() {
+  return `
+const { loadPyodide } = await import(${JSON.stringify(PYODIDE_URL)});
+const pyodide = await loadPyodide();
+
+// runner.py を「ファイルとして置いて import する」。実行ではなく import なので、
+// ローカル版で使われる if __name__ == "__main__" の入口（stdin を読む）は動かない。
+pyodide.FS.writeFile("/home/pyodide/runner.py", ${JSON.stringify(PAYLOAD.runner ?? "")}, { encoding: "utf8" });
+pyodide.runPython([
+  "import json, os, shutil, sys, tempfile",
+  "sys.path.insert(0, '/home/pyodide')",
+  "import runner",
+  "def __grade(payload_json):",
+  "    payload = json.loads(payload_json)",
+  "    work = tempfile.mkdtemp(prefix='py-trainer-')",   // 毎回まっさらな作業場所で採点する
+  "    here = os.getcwd()",
+  "    try:",
+  "        os.chdir(work)",
+  "        result = runner.run(payload)",
+  "    finally:",
+  "        os.chdir(here)",
+  "        shutil.rmtree(work, ignore_errors=True)",
+  "    return json.dumps(result, ensure_ascii=False)",
+].join("\\n"));
+
+self.onmessage = (e) => {
+  const { id, payload } = e.data;
+  let json;
+  try {
+    const grade = pyodide.globals.get("__grade");
+    json = grade(JSON.stringify(payload));
+    grade.destroy();
+  } catch (err) {
+    json = JSON.stringify({ error: "採点エンジンでエラー: " + String(err), results: [], stdout: "" });
+  }
+  self.postMessage({ type: "result", id, json });
+};
+self.postMessage({ type: "ready" });
+`;
+}
+
+function ensureWorker() {
+  if (worker) return workerReady;
+  const w = new Worker(URL.createObjectURL(new Blob([workerSource()], { type: "text/javascript" })), { type: "module" });
+  worker = w;
+  workerReady = new Promise((resolve, reject) => {
+    w.addEventListener("error", e => reject(new Error(e.message || "worker error")));
+    w.addEventListener("message", function onReady(e) {
+      if (e.data.type !== "ready") return;
+      w.removeEventListener("message", onReady);
+      pyReady = true;
+      resolve();
+    });
+  }).catch(err => {
+    if (worker === w) { worker = null; workerReady = null; pyReady = false; }
+    throw err;
+  });
+  return workerReady;
+}
+
+function gradeInBrowser(lesson, code) {
+  const started = ensureWorker().catch(err => {
+    throw new Error("Pythonの読み込みに失敗しました（オフラインではありませんか？）: " + err.message);
+  });
+  const id = ++jobId;
+  const payload = { code, checks: lesson.checks ?? [], setup: lesson.setup ?? null };
+  return started.then(() => new Promise(resolve => {
+    const w = worker;
+    const timer = setTimeout(() => {
+      w.terminate();                       // 無限ループごと捨てる
+      if (worker === w) { worker = null; workerReady = null; pyReady = false; ensureWorker(); }
+      resolve({ error: "5秒以内に終わりませんでした（無限ループになっていませんか？）", results: [], stdout: "" });
+    }, RUN_TIMEOUT_MS);
+    const onMsg = e => {
+      if (e.data.type !== "result" || e.data.id !== id) return;
+      clearTimeout(timer);
+      w.removeEventListener("message", onMsg);
+      resolve(JSON.parse(e.data.json));
+    };
+    w.addEventListener("message", onMsg);
+    w.postMessage({ id, payload });
+  }));
+}
+
+let runToken = 0;
+async function run() {
+  persistCode();
+  const token = ++runToken;
+  const lesson = current;
+  $output.innerHTML = `<span class="muted">${
+    MODE === "static"
+      ? (pyReady ? "ブラウザの中のPythonで実行中…" : "ブラウザ内のPythonを準備しています…（初回だけ数秒かかります）")
+      : "あなたのPythonで実行中…"
+  }</span>`;
+  let res;
+  if (MODE === "static") {
+    try {
+      res = await gradeInBrowser(lesson, $editor.value);
+    } catch (e) {
+      res = { error: e.message, results: [], stdout: "" };
+    }
+  } else {
+    try {
+      const r = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: lesson.id, code: $editor.value }),
+      });
+      res = await r.json();
+    } catch {
+      res = { error: "サーバーに接続できませんでした（py_trainer.py は起動していますか？）", results: [], stdout: "" };
+    }
+  }
+  if (token !== runToken || lesson !== current) return; // 実行中に切替/再実行された
+  const { error, results, stdout } = res;
+  $output.textContent = "";
+
+  for (const line of (stdout ?? "").split("\n")) {
+    if (!line) continue;
+    const d = document.createElement("div");
+    d.className = "log";
+    d.textContent = "› " + line;
+    $output.append(d);
+  }
+  let allPass = !error && (results ?? []).length > 0;
+  for (const r of results ?? []) {
+    const d = document.createElement("div");
+    d.className = "test " + (r.pass ? "pass" : "fail");
+    d.textContent = (r.pass ? "✓ " : "✗ ") + r.name + (r.pass || !r.detail ? "" : ` — ${r.detail}`);
+    $output.append(d);
+    if (!r.pass) allPass = false;
+  }
+  if (error) {
+    const d = document.createElement("div");
+    d.className = "err";
+    d.textContent = "✗ " + error;
+    $output.append(d);
+  }
+
+  const st = lessonState(lesson) ?? {};
+  if (!allPass) {
+    // 失敗を記録 → クリア済みの問題ならのちほど復習として再出題される
+    state = { ...state, lessons: { ...state.lessons, [lesson.id]: { ...st, code: $editor.value, lapses: (st.lapses ?? 0) + 1 } } };
+    saveState(true);
+    renderNav();
+    return;
+  }
+  const wasDue = dueReview(lesson);
+  const seq = (state.__seq ?? 0) + 1;
+  state = {
+    ...state, __seq: seq,
+    lessons: {
+      ...state.lessons,
+      [lesson.id]: { ...st, code: $editor.value, done: true, clearedSeq: seq, lapses: wasDue ? 0 : (st.lapses ?? 0) },
+    },
+  };
+  saveState(true);
+  renderNav();
+
+  const review = ALL.find(l => l !== lesson && dueReview(l));
+  const next = ALL.find(l => !(lessonState(l)?.done));
+  const d = document.createElement("div");
+  if (review) {
+    d.className = "review-note";
+    d.textContent = `🔁 クリア！ 以前間違えた「${review.title}」が復習に出ています（サイドバーの🔁）`;
+  } else if (next) {
+    d.className = "celebrate";
+    d.textContent = `🎉 クリア！ 次は「${next.title}」へ（サイドバーから選択）`;
+  } else {
+    d.className = "celebrate";
+    d.textContent = "🏆 全問クリア！おめでとうございます！";
+  }
+  $output.append(d);
+}
+
+function showHint() {
+  const box = document.createElement("div");
+  box.className = "hintbox";
+  box.textContent = "💡 " + current.hint;
+  $output.append(box);
+  box.scrollIntoView({ block: "nearest" });
+}
+
+function showSolution() {
+  const box = document.createElement("div");
+  box.className = "hintbox";
+  const label = document.createElement("div");
+  label.textContent = "📖 解答例（まず自力で5分は粘るのがおすすめ）";
+  const pre = document.createElement("pre");
+  pre.textContent = current.solution;
+  box.append(label, pre);
+  $output.append(box);
+  box.scrollIntoView({ block: "nearest" });
+}
+
+document.getElementById("btn-run").addEventListener("click", run);
+document.getElementById("btn-hint").addEventListener("click", showHint);
+document.getElementById("btn-solution").addEventListener("click", showSolution);
+document.getElementById("btn-reset").addEventListener("click", () => {
+  $editor.value = current.starter;
+  persistCode();
+});
+
+$editor.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); run(); }
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const { selectionStart: s, selectionEnd: end, value } = $editor;
+    $editor.value = value.slice(0, s) + "    " + value.slice(end);
+    $editor.selectionStart = $editor.selectionEnd = s + 4;
+  }
+});
+$editor.addEventListener("input", () => persistCode());
+
+renderNav();
+selectLesson(current);
+if (MODE === "static") ensureWorker();
+</script>
+</body>
+</html>
