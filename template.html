@@ -108,6 +108,21 @@
     padding: 10px 12px; margin-top: 10px; font-size: 13px; line-height: 1.7;
   }
   .hintbox pre { background: var(--bg); padding: 8px 10px; border-radius: 4px; font-family: var(--mono); font-size: 12.5px; margin-top: 6px; overflow-x: auto; }
+
+  /* ---- スマホ幅: 横並びをやめて、縦に積んでページごとスクロールする ---- */
+  @media (max-width: 720px) {
+    body { display: block; height: auto; overflow: auto; }
+    #sidebar {
+      width: auto; min-width: 0; max-height: 40vh;
+      border-right: none; border-bottom: 1px solid var(--border);
+    }
+    #main { overflow: visible; }
+    #desc { max-height: none; padding: 16px; }
+    #toolbar { flex-wrap: wrap; padding: 8px 16px; }
+    #toolbar .kbd { display: none; }
+    #editor { min-height: 45vh; padding: 12px 16px; font-size: 16px; } /* 16px 未満だと iOS が入力時に拡大する */
+    #output { height: auto; padding: 12px 16px; }
+  }
 </style>
 </head>
 <body>
@@ -151,11 +166,13 @@ const ALL = CHAPTERS.flatMap(ch => ch.lessons);
 const MODE = PAYLOAD.mode ?? "server";   // "server" = ローカルのCPython / "static" = ブラウザ内のPyodide
 const STORE_KEY = "py-trainer.state.v1";
 
+const isPlainObject = v => typeof v === "object" && v !== null && !Array.isArray(v);
 let state = MODE === "static"
-  ? (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) ?? {}; } catch { return {}; } })()
-  : (PAYLOAD.state ?? {});
+  ? (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; } })()
+  : PAYLOAD.state;
+if (!isPlainObject(state)) state = {};   // 保存内容が壊れていても（数値・文字列・配列など）白紙から始める
 if (typeof state.__seq !== "number") state.__seq = 0;
-if (typeof state.lessons !== "object" || state.lessons === null) state.lessons = {};
+if (!isPlainObject(state.lessons)) state.lessons = {};
 
 let saveTimer = null;
 function saveState(immediate = false) {
@@ -190,6 +207,7 @@ const $desc = document.getElementById("desc");
 const $editor = document.getElementById("editor");
 const $output = document.getElementById("output");
 const $bar = document.querySelector("#progressbar > div");
+const isNarrow = () => window.matchMedia("(max-width: 720px)").matches;
 document.getElementById("subline").textContent = `書いて覚えるPython全${ALL.length}問`;
 
 function renderNav() {
@@ -210,7 +228,10 @@ function renderNav() {
       const label = document.createElement("span");
       label.textContent = l.title;
       el.append(mark, label);
-      el.addEventListener("click", () => selectLesson(l));
+      el.addEventListener("click", () => {
+        selectLesson(l);
+        if (isNarrow()) $desc.scrollIntoView({ block: "start" });  // スマホでは問題文へ移動
+      });
       $nav.append(el);
     }
   }
@@ -221,7 +242,7 @@ function renderNav() {
 function resBoxHTML(ch) {
   const links = ch.resources.map(r =>
     `<a href="${r.url}" target="_blank" rel="noopener">${r.label}</a>`).join(" ・ ");
-  return `<div class="resbox">📚 深めるなら: ${links}<br>${MODE === "static" ? "※採点はブラウザの中のPython（Pyodide）で実行しています。コードはどこにも送信されません。" : "※採点はこのMacのPython（ローカル）で実行しています。ファイルを作る問題も使い捨てフォルダの中なので安心です。"}</div>`;
+  return `<div class="resbox">📚 深めるなら: ${links}<br>${MODE === "static" ? "※採点はブラウザの中のPython（Pyodide）で実行しています。コードはどこにも送信されません。" : "※採点はこのマシンのPython（ローカル）で実行しています。ファイルを作る問題も使い捨てフォルダの中なので安心です。"}</div>`;
 }
 
 function selectLesson(lesson) {
@@ -233,7 +254,7 @@ function selectLesson(lesson) {
   editorLoaded = true;
   $output.innerHTML = `<span class="muted">コードを書いて「実行して採点」を押してください。</span>`;
   renderNav();
-  $editor.focus();
+  if (!isNarrow()) $editor.focus();   // スマホでは急にキーボードが出て問題文が隠れるので、自動で入力欄に入らない
 }
 
 let editorLoaded = false;
@@ -326,7 +347,7 @@ function gradeInBrowser(lesson, code) {
     const w = worker;
     const timer = setTimeout(() => {
       w.terminate();                       // 無限ループごと捨てる
-      if (worker === w) { worker = null; workerReady = null; pyReady = false; ensureWorker(); }
+      if (worker === w) { worker = null; workerReady = null; pyReady = false; ensureWorker().catch(() => {}); }
       resolve({ error: "5秒以内に終わりませんでした（無限ループになっていませんか？）", results: [], stdout: "" });
     }, RUN_TIMEOUT_MS);
     const onMsg = e => {
@@ -394,6 +415,7 @@ async function run() {
     d.textContent = "✗ " + error;
     $output.append(d);
   }
+  if (isNarrow()) $output.scrollIntoView({ block: "nearest" });  // 結果はエディタの下にあるので見える位置へ
 
   const st = lessonState(lesson) ?? {};
   if (!allPass) {
@@ -429,6 +451,7 @@ async function run() {
     d.textContent = "🏆 全問クリア！おめでとうございます！";
   }
   $output.append(d);
+  if (isNarrow()) d.scrollIntoView({ block: "nearest" });
 }
 
 function showHint() {
@@ -472,7 +495,7 @@ $editor.addEventListener("input", () => persistCode());
 
 renderNav();
 selectLesson(current);
-if (MODE === "static") ensureWorker();
+if (MODE === "static") ensureWorker().catch(() => { /* 失敗は「実行して採点」を押したときに表示する */ });
 </script>
 </body>
 </html>

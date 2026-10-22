@@ -88,7 +88,7 @@ python3 build.py
 ## テスト
 
 ```bash
-python3 -m pytest test_py_trainer.py -q     # 88 passed
+python3 -m pytest test_py_trainer.py -q     # 105 passed
 ```
 
 全問の解答例が採点を通ることを検証します（pytest が必要です）。

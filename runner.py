@@ -9,6 +9,7 @@ py_trainer.py が一時ディレクトリを作業場所（cwd）にして起動
 
 チェックの種類:
     source — ソースコードへの正規表現チェック（"not": true なら「書かれていないこと」）
+             コメントは除いてから調べる（初期コードのコメントに反応しないように）
     eq     — 式を評価して期待値と == 比較（"type" があれば型名も確認）
     stdout — print 出力の確認（"expr" なしなら プログラム全体の出力）
 """
@@ -21,6 +22,7 @@ import json
 import math
 import re
 import sys
+import tokenize
 import traceback
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -52,6 +54,25 @@ def error_summary(exc: BaseException) -> str:
     if isinstance(exc, NameError):
         message += "（名前のタイプミス、または定義し忘れかもしれません）"
     return where + message
+
+
+def strip_comments(code: str) -> str:
+    """書き方チェック用に、コメント（# から行末まで）を取り除いたソースを返す。
+
+    文字列の中の # は残す。構文が壊れていても、読めたところまでは取り除く。
+    """
+    comments = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(code).readline):
+            if tok.type == tokenize.COMMENT:
+                comments.append(tok)
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    lines = code.splitlines(keepends=True)
+    for tok in comments:
+        (row, start), (_, end) = tok.start, tok.end
+        lines[row - 1] = lines[row - 1][:start] + lines[row - 1][end:]
+    return "".join(lines)
 
 
 def eval_quiet(expr: str, ns: dict) -> tuple:
@@ -104,10 +125,11 @@ def run(payload: dict) -> dict:
     results = []
 
     # 1) 書き方チェック（コードが実行できなくても判定できる）
+    source = strip_comments(code)
     for check in checks:
         if check["kind"] != "source":
             continue
-        found = re.search(check["pattern"], code, re.MULTILINE) is not None
+        found = re.search(check["pattern"], source, re.MULTILINE) is not None
         ok = (not found) if check.get("not") else found
         results.append(
             passed("[書き方] " + check["name"]) if ok
@@ -141,4 +163,7 @@ def run(payload: dict) -> dict:
 
 
 if __name__ == "__main__":
-    print(json.dumps(run(json.loads(sys.stdin.read())), ensure_ascii=False))
+    # 入出力は環境の既定エンコーディング（Windows なら cp932 など）に頼らず UTF-8 で読み、
+    # 結果は ASCII だけの JSON で返す（日本語は \uXXXX になるが、受け側の json.loads で元に戻る）
+    payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    sys.stdout.write(json.dumps(run(payload)) + "\n")

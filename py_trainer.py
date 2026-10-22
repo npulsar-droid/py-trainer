@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """py-trainer — 書いて覚えるPython。
 
-書いて → このMacのPythonで即採点 → 次へ、で基礎を体系立てて固めるドリル。
+書いて → このマシンのPythonで即採点 → 次へ、で基礎を体系立てて固めるドリル。
 標準ライブラリのみ使用。進捗は同じフォルダの state.json に保存される。
 
 使い方:
@@ -71,17 +71,20 @@ def grade(lesson_id: str, code: str) -> dict:
 
 # ---------------------------------------------------------------- 進捗の保存
 
-EMPTY_STATE = {"__seq": 0, "lessons": {}}
+def empty_state() -> dict:
+    return {"__seq": 0, "lessons": {}}
 
 
 def load_state() -> dict:
-    if not STATE_PATH.exists():
-        return dict(EMPTY_STATE)
+    """state.json を読む。無い・読めない・形が壊れているときは空の進捗から始める。"""
     try:
         loaded = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return dict(EMPTY_STATE)
-    return {**EMPTY_STATE, **loaded}
+    except (OSError, ValueError):  # ValueError は JSON・UTF-8 の解読失敗を含む
+        return empty_state()
+    if not isinstance(loaded, dict):
+        return empty_state()
+    state = {**empty_state(), **loaded}
+    return state if valid_state(state) else empty_state()
 
 
 def save_state(state: dict) -> None:
@@ -140,14 +143,40 @@ class QuietHandler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json")
 
-    def _read_body(self):
-        length = int(self.headers.get("Content-Length") or 0)
+    def _read_body(self) -> dict:
+        """JSON オブジェクトの本文を読む。形が違うものは空の辞書として扱う。"""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return {}
         if length <= 0:
             return {}
         try:
-            return json.loads(self.rfile.read(length).decode("utf-8"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
+        return body if isinstance(body, dict) else {}
+
+    def _from_own_page(self) -> bool:
+        """このアプリ自身の画面から送られたリクエストかを確かめる。
+
+        確かめないと、ブラウザで開いている別のサイトが localhost のこのサーバーに
+        コードを送りつけて実行させられる（CSRF）。そのため
+        - Host が localhost / 127.0.0.1 であること（DNS rebinding 対策）
+        - Origin が付いていれば、このサーバー自身であること
+        - Content-Type が application/json であること（別サイトからは
+          事前確認（preflight）なしには送れない形式）
+        をすべて満たすものだけ受け付ける。
+        """
+        port = self.server.server_address[1]
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.headers.get("Host") not in hosts:
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in {f"http://{h}" for h in hosts}:
+            return False
+        content_type = self.headers.get("Content-Type") or ""
+        return content_type.split(";")[0].strip().lower() == "application/json"
 
     def do_GET(self) -> None:
         if self.path in ("/", "/index.html"):
@@ -156,6 +185,9 @@ class QuietHandler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self) -> None:
+        if not self._from_own_page():
+            self._send_json({"ok": False, "error": "このサーバーの画面以外からのリクエストは受け付けません"}, 403)
+            return
         body = self._read_body()
         if self.path == "/api/run":
             lesson_id, code = body.get("id"), body.get("code")

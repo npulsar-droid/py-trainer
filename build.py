@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """build.py — ブラウザだけで動く単一HTML（index.html）を生成する。
 
-ローカル版（py_trainer.py）はこのMacのPythonで採点するが、
+ローカル版（py_trainer.py）はこのマシンのPythonで採点するが、
 生成される index.html は Pyodide で採点する。採点ロジック（runner.py）と
 問題（chapters/）は両者で共通なので、判定はズレない。
 
